@@ -11,3 +11,8 @@ wheels/
 .venv
 
 .env
+
+# Local SQLite data stores
+*.db
+*.db-shm
+*.db-wal
