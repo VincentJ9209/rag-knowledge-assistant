@@ -1,7 +1,7 @@
 [project]
 name = "rag-knowledge-assistant"
 version = "0.1.0"
-description = "Add your description here"
+description = "A persistent RAG knowledge assistant with grounded generation, function calling, and an explicit agentic loop."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
