@@ -1,0 +1,13 @@
+{
+  "corpus_document_count": 139,
+  "corpus_sha256": "678a3ac86505de79043d16a4297c2e7a053871b3cad81ab51148d9e43f3b381a",
+  "corpus_source": "local_sqlitesearch:notebooks/faq.db",
+  "snapshot_date": "2026-08-13",
+  "generation_model": "gpt-5.4-mini",
+  "generation_prompt_version": "v1",
+  "questions_per_document": 5,
+  "split_strategy": "stratified_by_document_question_family",
+  "tuning_ratio_target": 0.7,
+  "holdout_ratio_target": 0.3,
+  "random_seed": 20260813
+}
