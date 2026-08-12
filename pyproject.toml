@@ -5,6 +5,7 @@ description = "A persistent RAG knowledge assistant with grounded generation, fu
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "gitsource>=0.0.5",
     "jupyter>=1.1.1",
     "minsearch>=0.2.0",
     "openai>=2.53.0",
