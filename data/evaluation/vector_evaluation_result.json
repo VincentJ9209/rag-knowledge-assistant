@@ -3,6 +3,6 @@
   "model": "text-embedding-3-small",
   "split": "holdout",
   "hit_rate_at_5": 0.9808612440191388,
-  "mrr": 0.9143540669856459,
+  "mrr": 0.9119617224880382,
   "question_count": 209
 }

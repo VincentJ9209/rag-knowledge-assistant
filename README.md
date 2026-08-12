@@ -70,7 +70,7 @@ Retrieval Backend Comparison
 | Keyword baseline，question `2.0`／section `0.5` | Tuning | `0.9650` | `0.8720` |
 | Keyword baseline | Holdout | `0.9713` | `0.8561` |
 | Selected keyword policy | Holdout | `0.9713` | `0.8561` |
-| Vector，`text-embedding-3-small` | Holdout | `0.9809` | `0.9144` |
+| Vector，`text-embedding-3-small` | Holdout | `0.9809` | `0.9120` |
 
 小型 tuning grid 沒有找到同時優於 baseline 的 keyword weights，因此保留 `RAGBase.search()` 原始設定：question boost `2.0`、section boost `0.5`、course filter `llm-zoomcamp`、top-k `5`。這避免為了沒有改善的參數變更而增加 regression risk。
 
@@ -181,6 +181,7 @@ rag-knowledge-assistant/
 - Ground Truth 經 automated QA，但 20 筆 sample 尚待人工審核。
 - 目前沒有 cloud deployment、monitoring platform、distributed serving 或 production load test。
 - Metrics 僅適用於 `2026-08-13` frozen LLM Zoomcamp snapshot，不能外推到其他 corpus。
+- OpenAI embedding benchmark 可能因服務端模型更新產生小幅 metric drift；README 記錄的是 final verification run。
 
 ## Background
 
