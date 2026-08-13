@@ -6,9 +6,11 @@ dist/
 wheels/
 *.egg-info
 .ipynb_checkpoints
+.pytest_cache/
 
 # Virtual environments
 .venv
+.uv-cache/
 
 .env
 
@@ -16,3 +18,7 @@ wheels/
 *.db
 *.db-shm
 *.db-wal
+
+# Local evaluation and embedding runtime caches
+.embedding-cache/
+.runtime/

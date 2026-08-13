@@ -1,0 +1,21 @@
+question,document,split
+Which free Groq models can I use if I need tool support in development?,0d74a3616f,holdout
+Why is Kestra needed if I can already run my code in a notebook?,193612db63,tuning
+Are there any lessons missing between 06-search-tuning.md and 11-evaluation-intro.md?,57c8d3a1e4,tuning
+What command creates the basic dlt project structure for a filesystem source with DuckDB as the destination?,6bceeebf04,tuning
+Where can I check the deadline for my assigned peer reviews?,785b277339,tuning
+Where should I look first if the homework instructions aren’t making sense to me?,7d3a2e3505,holdout
+Where should I go if I want feedback on my project idea before I build it?,897a350476,holdout
+"If the Query API only gives me some of the spans at first, what’s the recommended next step?",8ede00dc4c,tuning
+"Is Codespaces required, or is it just the simplest option for everyone?",aa310de435,tuning
+"If I want the quantile of a DataFrame column, what method should I use?",b4c8ac5a0c,holdout
+What does the `get_weather_tool` JSON need to look like for the weather function to work correctly?,b9c7c6bb34,tuning
+How can I set up a separate tracer provider for spans I create by hand?,ba1d5f13e7,tuning
+What should I do if I get a message saying the current tracer provider can’t be overridden?,ba1d5f13e7,tuning
+Is there a way to build a Kestra flow without typing YAML by hand?,bfe5502c30,tuning
+How do I access the current workshop resources for the dlt session?,e00ceb24be,tuning
+What is the location of the dlt workshop content in the 2026 cohort materials?,e00ceb24be,tuning
+How can I see all the tables that are currently in the database?,e394e6f738,holdout
+Where should I place the Kestra flow files inside the repository before submitting the link?,f29f622684,tuning
+"Can I use tiktoken or cl100k_base to estimate tokens for Gemini, Mistral, Hugging Face, or Groq models?",fe8fed31e6,tuning
+What should I do if my model provider doesn’t give me any token usage information in the response?,fe8fed31e6,tuning
