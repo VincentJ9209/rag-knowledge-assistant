@@ -1,5 +1,7 @@
 # RAG Knowledge Assistant
 
+[![CI](https://github.com/VincentJ9209/rag-knowledge-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/VincentJ9209/rag-knowledge-assistant/actions/workflows/ci.yml)
+
 一個可重現、可評估、可透過 API 與 Docker 執行的 RAG 專案。系統將 DataTalks.Club 的 `139` 筆 LLM Zoomcamp FAQ 凍結為版本化語料，以相同 holdout set 比較 SQLite FTS keyword retrieval 與本機 NumPy vector retrieval，再把 Top-K evidence 交給 OpenAI 產生 grounded answer。
 
 > **Verified on 2026-08-13:** `27 passed` · Keyword Hit Rate@5 `0.9713` · Vector Hit Rate@5 `0.9809` · Docker `/health` OK
@@ -24,31 +26,23 @@ Notebook 型 RAG prototype 常缺少三件事：可重現的資料快照、獨�
 
 ## Architecture
 
-```text
-Frozen FAQ Corpus
-        ↓
-Persistent Keyword Retrieval OR Local NumPy Vector Retrieval
-        ↓
-Top-K Evidence
-        ↓
-Grounded Prompt
-        ↓
-OpenAI Response
-        ↓
-FastAPI
+```mermaid
+flowchart TD
+    A[Frozen FAQ Corpus<br/>139 documents] --> B{Retrieval Backend}
+    B --> C[SQLite FTS<br/>Keyword Retrieval]
+    B --> D[OpenAI Embeddings<br/>NumPy Vector Retrieval]
+    C --> E[Top-K Evidence]
+    D --> E
+    E --> F[Grounded Prompt]
+    F --> G[OpenAI Response]
+    G --> H[FastAPI<br/>GET /health · POST /ask]
+
+    I[Ground Truth<br/>695 questions] --> J[Deterministic Split<br/>486 tuning · 209 holdout]
+    J --> K[Hit Rate@5 + MRR]
+    K --> L[Retrieval Backend Comparison]
 ```
 
-Evaluation 與 application lifecycle 分離：
-
-```text
-Ground Truth
-    ↓
-Deterministic Tuning / Holdout
-    ↓
-Hit Rate@5 + MRR
-    ↓
-Retrieval Backend Comparison
-```
+Evaluation 與 application lifecycle 分離，讓 retrieval tuning、holdout comparison 與線上問答邊界可以獨立驗證。
 
 主要元件：
 
