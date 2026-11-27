@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app.service import CredentialError, RAGService
+from app.ollama import OllamaError
+from app.service import (
+    CredentialError, Provider, RAGService, RetrievalBackend, UnsupportedProviderBackend,
+)
 
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
-    retrieval_backend: Literal["keyword", "vector"] = "keyword"
+    retrieval_backend: RetrievalBackend = "keyword"
+    provider: Provider = "openai"
 
     @classmethod
     def _strip_question(cls, value: str) -> str:
@@ -28,7 +31,7 @@ class Source(BaseModel):
 
 class AskResponse(BaseModel):
     answer: str
-    retrieval_backend: Literal["keyword", "vector"]
+    retrieval_backend: RetrievalBackend
     sources: list[Source]
 
 
@@ -46,10 +49,16 @@ def create_app(service_factory: Callable[[], object] | None = None) -> FastAPI:
         if not question:
             raise HTTPException(status_code=422, detail="question must not be blank")
         try:
-            result = factory().ask(question, request.retrieval_backend)
+            service = factory()
+            if request.provider == "ollama":
+                return service.ask(question, request.retrieval_backend, provider="ollama")
+            return service.ask(question, request.retrieval_backend)
         except CredentialError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
-        return result
+        except UnsupportedProviderBackend as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except OllamaError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
     return application
 

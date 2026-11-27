@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/VincentJ9209/rag-knowledge-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/VincentJ9209/rag-knowledge-assistant/actions/workflows/ci.yml)
 
-一個可重現、可評估、可透過 API 與 Docker 執行的 RAG 專案。系統將 DataTalks.Club 的 `139` 筆 LLM Zoomcamp FAQ 凍結為版本化語料，以相同 holdout set 比較 SQLite FTS keyword retrieval 與本機 NumPy vector retrieval，再把 Top-K evidence 交給 OpenAI 產生 grounded answer。
+一個可重現、可評估、可透過 API 與 Docker 執行的 RAG 專案。系統將 DataTalks.Club 的 `139` 筆 LLM Zoomcamp FAQ 凍結為版本化語料，以相同 holdout set 比較 SQLite FTS keyword retrieval 與本機 NumPy vector retrieval。FastAPI 可使用 OpenAI 產生回答，也可用 SQLite FTS 搭配 Ollama 在本機完成問答與來源引用。
 
 > **Verified on 2026-08-13:** `27 passed` · Keyword Hit Rate@5 `0.9713` · Vector Hit Rate@5 `0.9809` · Docker `/health` OK
 
@@ -20,8 +20,8 @@ Notebook 型 RAG prototype 常缺少三件事：可重現的資料快照、獨�
 - SQLiteSearch keyword baseline 與 `8` 組小型 tuning grid
 - `text-embedding-3-small` + NumPy cosine similarity vector baseline，沒有外部 vector DB
 - FastAPI `GET /health` 與 `POST /ask`，支援 `keyword`／`vector` backend
-- Application 可在沒有 OpenAI key 時啟動；需要 credentials 的問答路徑會回傳受控 `503`
-- `27` 項 pytest tests，不進行真實 OpenAI 呼叫
+- 本機 Ollama keyword 問答可在沒有 OpenAI key 時執行，OpenAI 路徑缺少 key 時回傳受控 `503`
+- pytest 涵蓋 API、檢索與本機生成契約，測試以替身取代付費 API
 - Secret-free Docker image 與 GitHub Actions CI
 
 ## Architecture
@@ -31,10 +31,13 @@ flowchart TD
     A[Frozen FAQ Corpus<br/>139 documents] --> B{Retrieval Backend}
     B --> C[SQLite FTS<br/>Keyword Retrieval]
     B --> D[OpenAI Embeddings<br/>NumPy Vector Retrieval]
-    C --> E[Top-K Evidence]
+    C --> E[Grounded Prompt]
     D --> E
-    E --> F[Grounded Prompt]
-    F --> G[OpenAI Response]
+    E --> G[OpenAI Response]
+    C --> M[Grounded Context with Source IDs]
+    M --> N[Local Ollama Qwen3.5]
+    N --> O[Validate Citations]
+    O --> H
     G --> H[FastAPI<br/>GET /health · POST /ask]
 
     I[Ground Truth<br/>695 questions] --> J[Deterministic Split<br/>486 tuning · 209 holdout]
@@ -52,7 +55,8 @@ Evaluation 與 application lifecycle 分離，讓 retrieval tuning、holdout com
 | `notebooks/rag_helper.py::RAGBase` | Retrieval、context、prompt 與 generation coordinator |
 | `notebooks/evaluation_utils.py` | Corpus hash、QA、split、Hit Rate@k、MRR 與 generic evaluator |
 | `notebooks/vector_search.py` | Injectable embedding provider、batch document embeddings、cosine ranking |
-| `app/service.py` | Frozen corpus bootstrap 與 retrieval backend adapter |
+| `app/service.py` | Frozen corpus bootstrap、provider 選擇與來源 ID 驗證 |
+| `app/ollama.py` | 本機 Ollama chat 與結構化回答 |
 | `app/main.py` | Pydantic models、FastAPI factory 與 HTTP error boundary |
 
 ## Retrieval evidence
@@ -72,7 +76,7 @@ Vector baseline 在這份 holdout 上較高，但它需要 embedding API、成�
 
 ## Run locally
 
-需求：Python `3.14+` 與 [uv](https://docs.astral.sh/uv/)。
+CI 使用 Python `3.14` 與 [uv](https://docs.astral.sh/uv/)。
 
 ```powershell
 uv sync --frozen --dev
@@ -91,7 +95,25 @@ curl.exe http://127.0.0.1:8000/health
 {"status":"ok"}
 ```
 
-要使用 `/ask`，請在 `.env` 設定：
+### Ollama 本機問答
+
+在執行 FastAPI 的同一台主機上，使用已啟動的 Ollama `http://127.0.0.1:11434` 與已安裝的 `qwen3.5:9b-q4_K_M`。在 `POST /ask` 明確傳入 `"provider": "ollama"` 即可使用本機 keyword 問答，無需設定 `OPENAI_API_KEY`。
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8000/ask -Method Post `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body '{"question":"Where is the LLM Zoomcamp Telegram channel? 請用繁體中文回答。","provider":"ollama"}'
+```
+
+成功時回傳繁中 `answer`、`retrieval_backend` 與實際引用的 `sources`。這個例子的來源 ID 是 `054f3fd58f`。沒有完整文件能納入預算，或回答缺少有效引用時，回傳 `answer: "UNKNOWN"` 與空的 `sources`。文件內容作為不可信證據傳入模型，程式只接受實際納入 prompt 的文件 ID。
+
+Ollama 模式維持 `num_ctx=4096`。預留 512 tokens 給輸出和 512 tokens 給 chat template 及特殊標記，system prompt 與已序列化的 user JSON 合計最多 3,072 UTF-8 bytes。以每 byte 估算一個 token，實際 token 數由 Qwen tokenizer 決定。JSON 引號、跳脫與欄位結構都計入。問題本身的 JSON 字串最多 1,024 UTF-8 bytes，超出時在檢索前回傳 `422`。文件依檢索排名逐筆加入，略過放不下的整筆文件，繼續檢查下一筆。Ollama 請求停用自動截斷，生成後模型保留 `1m`。
+
+本機請求只連線到固定 loopback 位址，停用環境代理與 HTTP redirect。Ollama 模式的向量請求回傳 `422`，執行環境或模型不可用回傳 `503`，逾時回傳 `504`，無效回應回傳 `502`。本機模式沒有雲端 fallback。
+
+### OpenAI 問答
+
+`/ask` 省略 `provider` 時預設使用 OpenAI，也可明確傳入 `"provider": "openai"`。此模式需要在 `.env` 設定 key。
 
 ```env
 OPENAI_API_KEY="your_openai_api_key_here"
@@ -170,7 +192,9 @@ rag-knowledge-assistant/
 ## Limitations
 
 - 本機 vector retrieval 是 NumPy matrix ranking，不是 vector database，也沒有 hybrid search 或 reranker。
-- `/ask` 的 answer generation 仍需要 OpenAI credentials；vector backend 額外需要 embedding calls。
+- Ollama 模式沿用 SQLite FTS 的詞彙比對。公開 FAQ 主要為英文，查詢可保留英文關鍵詞並指定繁中回答。
+- 保守的 UTF-8 預算可能略過實際 token 數仍可容納的文件。程式驗證引用 ID 屬於送入模型的文件，回答內容與證據的語意一致性仍仰賴模型。
+- 範例中的 Ollama loopback 設定用於原生執行。預設 Docker bridge 有自己的 loopback，無法直接連到主機的 Ollama。
 - Document embeddings 尚未做 production-grade persistent cache；service process 重啟後可能重新產生。
 - Ground Truth 經 automated QA，但 20 筆 sample 尚待人工審核。
 - 目前沒有 cloud deployment、monitoring platform、distributed serving 或 production load test。
