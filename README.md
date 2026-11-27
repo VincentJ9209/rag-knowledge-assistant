@@ -105,7 +105,9 @@ Invoke-RestMethod -Uri http://127.0.0.1:8000/ask -Method Post `
   -Body '{"question":"Where is the LLM Zoomcamp Telegram channel? 請用繁體中文回答。","provider":"ollama"}'
 ```
 
-成功時回傳繁中 `answer`、`retrieval_backend` 與實際引用的 `sources`。這個例子的來源 ID 是 `054f3fd58f`。沒有相關文件或沒有有效引用時，回傳 `answer: "UNKNOWN"` 與空的 `sources`。文件內容作為不可信的證據傳入模型，引用 ID 會與實際檢索結果核對。
+成功時回傳繁中 `answer`、`retrieval_backend` 與實際引用的 `sources`。這個例子的來源 ID 是 `054f3fd58f`。沒有完整文件能納入預算，或回答缺少有效引用時，回傳 `answer: "UNKNOWN"` 與空的 `sources`。文件內容作為不可信證據傳入模型，程式只接受實際納入 prompt 的文件 ID。
+
+Ollama 模式維持 `num_ctx=4096`。預留 512 tokens 給輸出和 512 tokens 給 chat template 及特殊標記，system prompt 與已序列化的 user JSON 合計最多 3,072 UTF-8 bytes。以每 byte 估算一個 token，實際 token 數由 Qwen tokenizer 決定。JSON 引號、跳脫與欄位結構都計入。問題本身的 JSON 字串最多 1,024 UTF-8 bytes，超出時在檢索前回傳 `422`。文件依檢索排名逐筆加入，略過放不下的整筆文件，繼續檢查下一筆。Ollama 請求停用自動截斷，生成後模型保留 `1m`。
 
 本機請求只連線到固定 loopback 位址，停用環境代理與 HTTP redirect。Ollama 模式的向量請求回傳 `422`，執行環境或模型不可用回傳 `503`，逾時回傳 `504`，無效回應回傳 `502`。本機模式沒有雲端 fallback。
 
@@ -191,7 +193,7 @@ rag-knowledge-assistant/
 
 - 本機 vector retrieval 是 NumPy matrix ranking，不是 vector database，也沒有 hybrid search 或 reranker。
 - Ollama 模式沿用 SQLite FTS 的詞彙比對。公開 FAQ 主要為英文，查詢可保留英文關鍵詞並指定繁中回答。
-- Ollama 會根據提示判斷證據是否足夠。程式可驗證引用 ID 是否來自檢索結果，回答內容與證據的語意一致性仍仰賴模型。
+- 保守的 UTF-8 預算可能略過實際 token 數仍可容納的文件。程式驗證引用 ID 屬於送入模型的文件，回答內容與證據的語意一致性仍仰賴模型。
 - 範例中的 Ollama loopback 設定用於原生執行。預設 Docker bridge 有自己的 loopback，無法直接連到主機的 Ollama。
 - Document embeddings 尚未做 production-grade persistent cache；service process 重啟後可能重新產生。
 - Ground Truth 經 automated QA，但 20 筆 sample 尚待人工審核。

@@ -11,6 +11,11 @@ from pydantic import BaseModel, ConfigDict
 OLLAMA_CHAT_URL = "http://127.0.0.1:11434/api/chat"
 OLLAMA_MODEL = "qwen3.5:9b-q4_K_M"
 UNKNOWN = "UNKNOWN"
+CONTEXT_TOKENS = 4096
+OUTPUT_TOKENS = 512
+TEMPLATE_TOKEN_ALLOWANCE = 512
+MAX_PROMPT_BYTES = CONTEXT_TOKENS - OUTPUT_TOKENS - TEMPLATE_TOKEN_ALLOWANCE
+MAX_QUESTION_BYTES = 1024
 
 SYSTEM_PROMPT = """
 Answer the user's question in Traditional Chinese (zh-TW) using only facts
@@ -37,25 +42,45 @@ class CitedAnswer(BaseModel):
     citations: list[str]
 
 
-def generate_local_answer(question: str, documents: list[dict]) -> CitedAnswer:
-    context = {
-        "question": question,
-        "documents": [
-            {key: str(document[key]) for key in ("id", "section", "question", "answer")}
-            for document in documents
-        ],
-    }
+def validate_local_question(question: str) -> None:
+    try:
+        question_bytes = len(json.dumps(question, ensure_ascii=False).encode("utf-8"))
+    except UnicodeEncodeError as error:
+        raise OllamaError(422, "Local question must be valid UTF-8 text") from error
+    if question_bytes > MAX_QUESTION_BYTES:
+        raise OllamaError(422, f"Local question exceeds the {MAX_QUESTION_BYTES}-byte JSON limit")
+
+
+def pack_local_context(question: str, ranked_documents: list[dict]) -> tuple[str, list[dict[str, str]]]:
+    included = []
+    context = {"question": question, "documents": included}
+    user_content = ""
+    # Charge one token per UTF-8 byte as a conservative estimate for Qwen's
+    # byte-level tokenizer. Count the JSON escapes and the system message too.
+    user_budget = MAX_PROMPT_BYTES - len(SYSTEM_PROMPT.encode("utf-8"))
+    for document in ranked_documents:
+        included.append({key: str(document[key]) for key in ("id", "section", "question", "answer")})
+        candidate = json.dumps(context, ensure_ascii=False)
+        if len(candidate.encode("utf-8")) > user_budget:
+            included.pop()
+        else:
+            user_content = candidate
+    return user_content, included
+
+
+def generate_local_answer(user_content: str) -> CitedAnswer:
     payload = {
         "model": OLLAMA_MODEL,
         "stream": False,
         "think": False,
-        "keep_alive": 0,
+        "keep_alive": "1m",
+        "truncate": False,
         "format": CitedAnswer.model_json_schema(),
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
+            {"role": "user", "content": user_content},
         ],
-        "options": {"temperature": 0, "num_ctx": 4096, "num_predict": 512},
+        "options": {"temperature": 0, "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS},
     }
     try:
         with requests.Session() as session:

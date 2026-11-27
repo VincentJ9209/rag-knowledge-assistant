@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from sqlitesearch import TextSearchIndex
 
-from app.ollama import UNKNOWN, generate_local_answer
+from app.ollama import UNKNOWN, generate_local_answer, pack_local_context, validate_local_question
 from notebooks.rag_helper import RAGBase
 from notebooks.vector_search import OpenAIEmbedder, VectorSearchIndex
 
@@ -106,18 +106,19 @@ class RAGService:
         return AskResult(answer, retrieval_backend, self._compact_sources(sources))
 
     def _ask_local(self, question: str) -> AskResult:
+        validate_local_question(question)
         rag = RAGBase(index=self._get_keyword_index(), llm_client=None)
-        sources = rag.search(question)
-        if not sources:
+        user_content, included = pack_local_context(question, rag.search(question))
+        if not included:
             return AskResult(UNKNOWN, "keyword", [])
 
-        result = generate_local_answer(question, sources)
-        retrieved = {str(document["id"]): document for document in sources}
+        result = generate_local_answer(user_content)
+        context_sources = {document["id"]: document for document in included}
         cited_ids = dict.fromkeys(result.citations)
-        if result.answer == UNKNOWN or not cited_ids or not cited_ids.keys() <= retrieved.keys():
+        if result.answer == UNKNOWN or not cited_ids or not cited_ids.keys() <= context_sources.keys():
             return AskResult(UNKNOWN, "keyword", [])
         return AskResult(
-            result.answer, "keyword", self._compact_sources(retrieved[id_] for id_ in cited_ids),
+            result.answer, "keyword", self._compact_sources(context_sources[id_] for id_ in cited_ids),
         )
 
     @staticmethod
