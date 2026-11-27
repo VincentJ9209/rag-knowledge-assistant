@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from sqlitesearch import TextSearchIndex
 
+from app.ollama import UNKNOWN, generate_local_answer
 from notebooks.rag_helper import RAGBase
 from notebooks.vector_search import OpenAIEmbedder, VectorSearchIndex
 
@@ -20,10 +21,18 @@ class CredentialError(RuntimeError):
     pass
 
 
+class UnsupportedProviderBackend(ValueError):
+    pass
+
+
+Provider = Literal["openai", "ollama"]
+RetrievalBackend = Literal["keyword", "vector"]
+
+
 @dataclass
 class AskResult:
     answer: str
-    retrieval_backend: Literal["keyword", "vector"]
+    retrieval_backend: RetrievalBackend
     sources: list[dict[str, str]]
 
 
@@ -75,7 +84,14 @@ class RAGService:
             )
         return self._vector_index
 
-    def ask(self, question: str, retrieval_backend: Literal["keyword", "vector"]) -> AskResult:
+    def ask(
+        self, question: str, retrieval_backend: RetrievalBackend, provider: Provider = "openai",
+    ) -> AskResult:
+        if provider == "ollama":
+            if retrieval_backend != "keyword":
+                raise UnsupportedProviderBackend("Ollama requires keyword retrieval")
+            return self._ask_local(question)
+
         load_dotenv()
         if not os.getenv("OPENAI_API_KEY"):
             raise CredentialError("OPENAI_API_KEY is required")
@@ -87,7 +103,26 @@ class RAGService:
         rag = RAGBase(index=index, llm_client=client)
         sources = rag.search(question)
         answer = rag.llm(rag.build_prompt(question, sources))
-        compact_sources = [
+        return AskResult(answer, retrieval_backend, self._compact_sources(sources))
+
+    def _ask_local(self, question: str) -> AskResult:
+        rag = RAGBase(index=self._get_keyword_index(), llm_client=None)
+        sources = rag.search(question)
+        if not sources:
+            return AskResult(UNKNOWN, "keyword", [])
+
+        result = generate_local_answer(question, sources)
+        retrieved = {str(document["id"]): document for document in sources}
+        cited_ids = dict.fromkeys(result.citations)
+        if result.answer == UNKNOWN or not cited_ids or not cited_ids.keys() <= retrieved.keys():
+            return AskResult(UNKNOWN, "keyword", [])
+        return AskResult(
+            result.answer, "keyword", self._compact_sources(retrieved[id_] for id_ in cited_ids),
+        )
+
+    @staticmethod
+    def _compact_sources(sources):
+        return [
             {
                 "document_id": str(document["id"]),
                 "section": str(document["section"]),
@@ -95,4 +130,3 @@ class RAGService:
             }
             for document in sources
         ]
-        return AskResult(answer, retrieval_backend, compact_sources)
